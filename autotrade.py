@@ -112,7 +112,7 @@ def analyze_data_with_gpt4(data_json):
 
         current_status = get_current_status()
         response = client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+            model="gpt-3-turbo",
             messages=[
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": data_json},
