@@ -12,6 +12,7 @@ import time
 import requests
 from datetime import datetime
 import sqlite3
+from datetime import datetime, timezone
 
 # Setup
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -192,48 +193,51 @@ def get_news_data():
         news_results = response.json()["news_results"]
 
         simplified_news = []
+        today = datetime.now(timezone.utc).date()  # 오늘 날짜
 
         for news_item in news_results:
             # Check if this news item contains 'stories'
             if "stories" in news_item:
                 for story in news_item["stories"]:
-                    timestamp = int(
-                        datetime.strptime(
+                    if "date" in story:
+                        news_date = datetime.strptime(
                             story["date"], "%m/%d/%Y, %H:%M %p, %z %Z"
-                        ).timestamp()
-                        * 1000
-                    )
-                    simplified_news.append(
-                        (
-                            story["title"],
-                            story.get("source", {}).get("name", "Unknown source"),
-                            timestamp,
-                        )
-                    )
+                        ).date()
+                        if news_date == today:  # 오늘 날짜의 뉴스만 처리
+                            simplified_news.append(
+                                (
+                                    story["title"],
+                                    story.get("source", {}).get(
+                                        "name", "Unknown source"
+                                    ),
+                                    news_date,
+                                )
+                            )
             else:
                 # Process news items that are not categorized under stories but check date first
                 if news_item.get("date"):
-                    timestamp = int(
-                        datetime.strptime(
-                            news_item["date"], "%m/%d/%Y, %H:%M %p, %z %Z"
-                        ).timestamp()
-                        * 1000
-                    )
-                    simplified_news.append(
-                        (
-                            news_item["title"],
-                            news_item.get("source", {}).get("name", "Unknown source"),
-                            timestamp,
+                    news_date = datetime.strptime(
+                        news_item["date"], "%m/%d/%Y, %H:%M %p, %z %Z"
+                    ).date()
+                    if news_date == today:  # 오늘 날짜의 뉴스만 처리
+                        simplified_news.append(
+                            (
+                                news_item["title"],
+                                news_item.get("source", {}).get(
+                                    "name", "Unknown source"
+                                ),
+                                news_date,
+                            )
                         )
-                    )
-                else:
-                    simplified_news.append(
-                        (
-                            news_item["title"],
-                            news_item.get("source", {}).get("name", "Unknown source"),
-                            "No timestamp provided",
-                        )
-                    )
+                # else:
+                #     simplified_news.append(
+                #         (
+                #             news_item["title"],
+                #             news_item.get("source", {}).get("name", "Unknown source"),
+                #             "No date provided",
+                #         )
+                #     )
+        print(f"Total news count: {len(simplified_news)}")
         result = str(simplified_news)
     except Exception as e:
         print(f"Error fetching news data: {e}")
@@ -271,9 +275,7 @@ def get_instructions(file_path):
         print("An error occurred while reading the file:", e)
 
 
-def analyze_data_with_gpt4(
-    news_data, data_json, last_decisions, fear_and_greed, current_status
-):
+def analyze_data_with_gpt4(news_data, data_json, last_decisions, current_status):
     instructions_path = "instructions_v2.md"
     try:
         instructions = get_instructions(instructions_path)
@@ -282,13 +284,12 @@ def analyze_data_with_gpt4(
             return None
 
         response = client.chat.completions.create(
-            model="gpt-3-turbo",
+            model="gpt-4-turbo-2024-04-09",  # gpt-4-turbo-2024-04-09
             messages=[
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": news_data},
                 {"role": "user", "content": data_json},
                 {"role": "user", "content": last_decisions},
-                {"role": "user", "content": fear_and_greed},
                 {"role": "user", "content": current_status},
             ],
             response_format={"type": "json_object"},
@@ -335,59 +336,64 @@ def make_decision_and_execute():
     print("Making decision and executing...")
     try:
         news_data = get_news_data()
-        data_json = fetch_and_prepare_data()
-        last_decisions = fetch_last_decisions()
-        fear_and_greed = fetch_fear_and_greed_index(limit=30)
-        current_status = get_current_status()
+        print(news_data)
+        # data_json = fetch_and_prepare_data()
+        # last_decisions = fetch_last_decisions()
+        # current_status = get_current_status()
     except Exception as e:
         print(f"Error: {e}")
     else:
-        max_retries = 5
-        retry_delay_seconds = 5
-        decision = None
-        for attempt in range(max_retries):
-            try:
-                advice = analyze_data_with_gpt4(
-                    news_data, data_json, last_decisions, fear_and_greed, current_status
-                )
-                decision = json.loads(advice)
-                break
-            except json.JSONDecodeError as e:
-                print(
-                    f"JSON parsing failed: {e}. Retrying in {retry_delay_seconds} seconds..."
-                )
-                time.sleep(retry_delay_seconds)
-                print(f"Attempt {attempt + 2} of {max_retries}")
-        if not decision:
-            print("Failed to make a decision after maximum retries.")
-            return
-        else:
-            try:
-                percentage = decision.get("percentage", 100)
+        print("")
+        # max_retries = 5
+        # retry_delay_seconds = 5
+        # decision = None
+        # for attempt in range(max_retries):
+        #     try:
+        #         advice = analyze_data_with_gpt4(
+        #             news_data, data_json, last_decisions, current_status
+        #         )
+        #         decision = json.loads(advice)
+        #         break
+        #     except json.JSONDecodeError as e:
+        #         print(
+        #             f"JSON parsing failed: {e}. Retrying in {retry_delay_seconds} seconds..."
+        #         )
+        #         time.sleep(retry_delay_seconds)
+        #         print(f"Attempt {attempt + 2} of {max_retries}")
+        # if not decision:
+        #     print("Failed to make a decision after maximum retries.")
+        #     return
+        # else:
+        #     try:
+        #         percentage = decision.get("percentage", 100)
 
-                if decision.get("decision") == "buy":
-                    execute_buy(percentage)
-                elif decision.get("decision") == "sell":
-                    execute_sell(percentage)
+        #         if decision.get("decision") == "buy":
+        #             execute_buy(percentage)
+        #         elif decision.get("decision") == "sell":
+        #             execute_sell(percentage)
+        #         else:
+        #             print("hold")
 
-                save_decision_to_db(decision, current_status)
-            except Exception as e:
-                print(f"Failed to execute the decision or save to DB: {e}")
+        #         save_decision_to_db(decision, current_status)
+        #     except Exception as e:
+        #         print(f"Failed to execute the decision or save to DB: {e}")
 
 
 if __name__ == "__main__":
     initialize_db()
+
+    make_decision_and_execute()
     # testing
     # schedule.every().minute.do(make_decision_and_execute)
 
     # Schedule the task to run at 00:01
-    schedule.every().day.at("00:01").do(make_decision_and_execute)
+    # schedule.every().day.at("06:01").do(make_decision_and_execute)
 
-    # Schedule the task to run at 08:01
-    schedule.every().day.at("08:01").do(make_decision_and_execute)
+    # # Schedule the task to run at 08:01
+    # schedule.every().day.at("08:01").do(make_decision_and_execute)
 
-    # Schedule the task to run at 16:01
-    schedule.every().day.at("16:01").do(make_decision_and_execute)
+    # # # Schedule the task to run at 16:01
+    # schedule.every().day.at("10:01").do(make_decision_and_execute)
 
     while True:
         schedule.run_pending()
