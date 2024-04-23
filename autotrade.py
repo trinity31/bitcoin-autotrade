@@ -112,7 +112,7 @@ def analyze_data_with_gpt4(data_json):
 
         current_status = get_current_status()
         response = client.chat.completions.create(
-            model="gpt-3-turbo",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": data_json},
@@ -170,7 +170,7 @@ def make_decision_and_execute():
 
 if __name__ == "__main__":
     make_decision_and_execute()
-    schedule.every().hour.at(":01").do(make_decision_and_execute)
+    # schedule.every().hour.at(":01").do(make_decision_and_execute)
     # schedule.every().minute.do(make_decision_and_execute)
 
     while True:
